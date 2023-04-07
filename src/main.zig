@@ -105,7 +105,7 @@ test "kvp testing" {
     }
 }
 
-/// Errors associated with readByLineTokenizedTyped
+/// Errors associated with csv parsing
 pub const Errors = error{
     InvalidHeader,
 };
