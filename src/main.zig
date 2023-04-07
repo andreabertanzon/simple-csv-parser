@@ -196,5 +196,5 @@ test "read by line" {
     for (result.entities.items) |*item| {
         item.print();
     }
-    //try std.testing.expectEqual(result.items.len, 3);
+    try std.testing.expectEqual(result.entities.items.len, 3);
 }
