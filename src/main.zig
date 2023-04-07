@@ -8,6 +8,96 @@ const Employee = struct {
     phone: []const u8,
 };
 
+pub const TokenKvp = struct {
+    key: []u8,
+    value: []u8,
+
+    pub fn init(allocator: std.mem.Allocator, key: []const u8, value: []const u8) !TokenKvp {
+        var self = TokenKvp{
+            .key = try allocator.dupe(u8, key),
+            .value = try allocator.dupe(u8, value),
+        };
+        return self;
+    }
+
+    pub fn deinit(self: *TokenKvp, allocator: std.mem.Allocator) void {
+        allocator.free(self.key);
+        allocator.free(self.value);
+    }
+};
+
+pub const Entity = struct {
+    kvps: std.ArrayListUnmanaged(TokenKvp),
+    line: usize,
+
+    pub fn init(allocator: std.mem.Allocator, line: usize) !Entity {
+        //var kvpList = std.ArrayList(TokenKvp).init(allocator);
+        var kvpList = try std.ArrayListUnmanaged(TokenKvp).initCapacity(allocator, 4);
+
+        var self = Entity{
+            .kvps = kvpList,
+            .line = line,
+        };
+
+        return self;
+    }
+
+    pub fn addKvp(self: *Entity, key: []const u8, value: []const u8, allocator: std.mem.Allocator) !void {
+        var kvp = try TokenKvp.init(allocator, key, value);
+        try self.kvps.append(allocator, kvp);
+    }
+
+    pub fn deinit(self: *Entity, allocator: std.mem.Allocator) void {
+        for (self.kvps.items) |*kvp| {
+            kvp.deinit(allocator);
+        }
+        self.kvps.deinit(allocator);
+    }
+};
+
+pub const Entities = struct {
+    allocator: std.mem.Allocator,
+    entities: std.ArrayListUnmanaged(Entity),
+
+    pub fn init(allocator: std.mem.Allocator) !Entities {
+        var entities = try std.ArrayListUnmanaged(Entity).initCapacity(allocator, 4);
+
+        var self = Entities{
+            .allocator = allocator,
+            .entities = entities,
+        };
+
+        return self;
+    }
+
+    pub fn addEntity(self: *Entities, entity: Entity) !void {
+        try self.entities.append(self.allocator, entity);
+    }
+
+    pub fn deinit(self: *Entities) void {
+        for (self.entities.items) |*entity| {
+            entity.deinit(self.allocator);
+        }
+        self.entities.deinit(self.allocator);
+    }
+};
+
+test "kvp testing" {
+    std.debug.print("KVP testing\n", .{});
+    var testingAllocator = std.testing.allocator;
+    var value: []const u8 = "value";
+    var key: []const u8 = "key";
+    var entity = try Entity.init(testingAllocator, 0);
+    try entity.addKvp(key, value, testingAllocator);
+
+    var entities = try Entities.init(testingAllocator);
+    defer entities.deinit();
+    try entities.addEntity(entity);
+    for (entity.kvps.items) |kvp| {
+        std.debug.print("KVP: {s} - {s}\n", .{ kvp.key, kvp.value });
+    }
+}
+
 /// Errors associated with readByLineTokenizedTyped
 pub const Errors = error{
     InvalidHeader,
@@ -21,11 +111,13 @@ pub const Errors = error{
 pub fn readCsvAlloc(comptime T: type, path: []const u8, allocator: std.mem.Allocator) !std.ArrayList(T) {
     var val: T = undefined; // needed for the inline for loop
     var arrayList = std.ArrayList(T).init(allocator);
-    var buff = try allocator.alloc(u8, 1024);
-    defer allocator.free(buff);
 
     var file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
+
+    var size = (try file.stat()).size;
+    var buff = try allocator.alloc(u8, size);
+    defer allocator.free(buff);
 
     var buf_reader = std.io.bufferedReader(file.reader());
     var in_stream = buf_reader.reader();
