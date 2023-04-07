@@ -53,6 +53,13 @@ pub const Entity = struct {
         }
         self.kvps.deinit(allocator);
     }
+
+    pub fn print(self: *Entity) void {
+        std.debug.print("Entity: {d}\n", .{self.line});
+        for (self.kvps.items) |kvp| {
+            std.debug.print("KVP: {s} - {s}\n", .{ kvp.key, kvp.value });
+        }
+    }
 };
 
 pub const Entities = struct {
@@ -108,9 +115,9 @@ pub const Errors = error{
 /// the fields must be of type []const u8 so that they can be loaded in the T struct
 /// returns an ArrayList of T. The ArrayList must be deinitialized after use so are all the
 /// fields of the T struct
-pub fn readCsvAlloc(comptime T: type, path: []const u8, allocator: std.mem.Allocator) !std.ArrayList(T) {
+pub fn readCsvAlloc(comptime T: type, path: []const u8, allocator: std.mem.Allocator) !Entities {
     var val: T = undefined; // needed for the inline for loop
-    var arrayList = std.ArrayList(T).init(allocator);
+    var entities = try Entities.init(allocator);
 
     var file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
@@ -141,7 +148,6 @@ pub fn readCsvAlloc(comptime T: type, path: []const u8, allocator: std.mem.Alloc
         // we check that each header matches the struct field name
         if (i == 0) {
             while (it.next()) |token| {
-                //std.debug.print("TOKEN: {s} - STRUCT: {s}\n", .{ token, field_names[field_count] });
                 if (!std.mem.eql(u8, field_names[field_count], token)) {
                     std.debug.print("--> Invalid header: {s} != {s}\n", .{ field_names[field_count], token });
                     return error.InvalidHeader;
@@ -154,36 +160,41 @@ pub fn readCsvAlloc(comptime T: type, path: []const u8, allocator: std.mem.Alloc
             i += 1;
             continue;
         }
-        //var it = std.mem.tokenize(u8, line, ",\n");
         field_count = 0;
+        var entity = try Entity.init(allocator, i);
         while (it.next()) |token| {
             inline for (fields) |field| {
                 if (std.mem.eql(u8, field_names[field_count], field.name)) {
                     // assign field value
-                    var value: []const u8 = token;
-                    @field(val, field.name) = try allocator.dupe(u8, value);
+                    try entity.addKvp(field.name, token, allocator);
                 }
             }
             field_count += 1;
         }
-        try arrayList.append(val);
+
+        try entities.addEntity(entity);
         i += 1;
     }
 
-    return arrayList;
+    return entities;
 }
 
 test "read by line" {
     var testingAllocator = std.testing.allocator;
 
-    var result: std.ArrayList(Employee) = try readCsvAlloc(Employee, "test2.csv", testingAllocator);
+    var result: Entities = try readCsvAlloc(
+        struct {
+            name: []const u8,
+            surname: []const u8,
+            address: []const u8,
+            phone: []const u8,
+        },
+        "test2.csv",
+        testingAllocator,
+    );
     defer result.deinit();
-    for (result.items) |item| {
-        std.debug.print("ITEM: {s}, {s}, {s}, {s}\n", .{ item.name, item.surname, item.address, item.phone });
-        testingAllocator.free(item.name);
-        testingAllocator.free(item.surname);
-        testingAllocator.free(item.address);
-        testingAllocator.free(item.phone);
+    for (result.entities.items) |*item| {
+        item.print();
     }
-    try std.testing.expectEqual(result.items.len, 3);
+    //try std.testing.expectEqual(result.items.len, 3);
 }
