@@ -27,7 +27,8 @@ pub fn build(b: *std.Build) void {
     // This declares intent for the library to be installed into the standard
     // location when the user invokes the "install" step (the default step when
     // running `zig build`).
-    lib.install();
+    b.installArtifact(lib);
+    //lib.install();
 
     // Creates a step for unit testing.
     const main_tests = b.addTest(.{
